@@ -4,6 +4,7 @@
 #include "ocpayload.h"
 #include "payload_logging.h"
 
+#include <cstdlib>
 #include <signal.h>
 #include <pthread.h>
 
@@ -16,6 +17,8 @@
 static OCDevAddr gDeviceAddr;
 
 static int gQuitFlag = 0;
+
+sio::socket::ptr currentSocket;
 
 void handleSigInt(int signum)
 {
@@ -75,9 +78,18 @@ const char *getResult(OCStackResult result)
     }
 }
 
+sio::message::ptr mapToMessage(OCResourcePayload* payload)
+{
+	sio::message::ptr message = sio::object_message::create();
+	auto &map = message->get_map();
+	
+	map["uri"] = sio::string_message::create(payload->uri);
+	return message;
+}
 
-OCStackApplicationResult discoveryReqCb(void * ctx, OCDoHandle handle, 
-					OCClientResponse * clientResponse)
+OCStackApplicationResult 
+discoveryReqCb(void * ctx, OCDoHandle handle, 
+		OCClientResponse * clientResponse)
 {
     if(clientResponse)
     { 
@@ -87,7 +99,41 @@ OCStackApplicationResult discoveryReqCb(void * ctx, OCDoHandle handle,
 
 	gDeviceAddr = clientResponse->devAddr;
 
+	char port[10];
+	sprintf(port, "%d", clientResponse->devAddr.port);
+
+	sio::message::list li;
+	li.push(sio::string_message::create(clientResponse->devAddr.addr));
+	li.push(sio::string_message::create(port));
+	//currentSocket->emit("new device", li);
+	sio::message::ptr message = sio::object_message::create();
+	auto &map = message->get_map();
+	map["adapter"] = sio::int_message::create(gDeviceAddr.adapter);
+	map["flags"] = sio::int_message::create(gDeviceAddr.flags);
+	map["port"] = sio::int_message::create(gDeviceAddr.port);
+	map["addr"] = sio::string_message::create(gDeviceAddr.addr);
+	map["interface"] = sio::int_message::create(gDeviceAddr.interface);
+
+	OCDiscoveryPayload* discPayload = (OCDiscoveryPayload*) clientResponse->payload;
+	OCResourcePayload* resourcePayload = (OCResourcePayload*) discPayload->resources;
+
+	sio::message::ptr resource_message = sio::array_message::create();	
+	auto &vector = resource_message->get_vector();
+	
+	while(resourcePayload != NULL)
+	{
+		vector.push_back(mapToMessage(resourcePayload));
+		resourcePayload = resourcePayload->next;	
+	}
+		
+	map["resources"] = resource_message;
+
+
+	currentSocket->emit("new device", message);
+
    	OIC_LOG_V(INFO, TAG, "===========> Discover response");
+
+	OIC_LOG_PAYLOAD(INFO, clientResponse->payload);
     }
     else 
     {
@@ -141,9 +187,28 @@ getLEDReqCb(void * ctx, OCDoHandle handle, OCClientResponse * clientResponse)
     }
 
     OIC_LOG_PAYLOAD(INFO, clientResponse->payload);
+    
+    OCRepPayload* repPayload = (OCRepPayload*)clientResponse->payload;
+    
+    sio::message::ptr message = sio::object_message::create();
+	auto &map = message->get_map();
+	
+	int64_t power;
+	int64_t state;
+	
+	OCRepPayloadGetPropInt(repPayload, "power", &power);
+	OCRepPayloadGetPropInt(repPayload, "state", &state);
+	const char* uri = clientResponse->resourceUri;
+	
+	map["uri"] = sio::string_message::create(uri);
+	map["power"] = sio::int_message::create(power);
+	map["state"] = sio::int_message::create(state);
+	
+	currentSocket->emit("get response", message);
 
     return OC_STACK_DELETE_TRANSACTION;
 }
+
 
 int initGetLED()
 {
@@ -205,6 +270,18 @@ int initPutLED(int power, int state)
    return res;
 }
 
+void putEvent(sio::event &)
+{
+	int power;
+    int state;
+	printf("Recebi o put\n");
+	printf("Power: ");
+	scanf("%d", &power);
+	printf("State: ");
+    scanf("%d", &state);
+    initPutLED(power, state);
+}
+
 void* PrintMenu(void* params) {
     int option = 0;
     int power;
@@ -241,6 +318,10 @@ int main() {
 
     sio::client h;
     h.connect("http://hassenco.com");
+
+    currentSocket = h.socket();
+    
+    currentSocket->on("put", &putEvent);
 
     initDiscovery();
 
