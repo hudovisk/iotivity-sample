@@ -7,6 +7,8 @@
 #include <signal.h>
 #include <pthread.h>
 
+#include "sio_client.h"
+
 #define TAG "my-client"
 
 #define DEFAULT_CONTEXT 0x99
@@ -99,7 +101,7 @@ int initDiscovery()
 {
     OCStackResult result;
     OCCallbackData cbData;
-    char * queryUri = "/oic/res";
+    const char * queryUri = "/oic/res";
 
     cbData.cb = discoveryReqCb;
     cbData.context = (void*) DEFAULT_CONTEXT;
@@ -148,7 +150,7 @@ int initGetLED()
     OIC_LOG(INFO, TAG, "Making Get request");
     OCStackResult res;
     OCCallbackData cbData;
-    char * queryUri = "/a/led/";
+    const char * queryUri = "/a/led/";
 
     cbData.cb = getLEDReqCb;
     cbData.context = (void*) 0x99;
@@ -186,7 +188,7 @@ int initPutLED(int power, int state)
     OIC_LOG(INFO, TAG, "Executing PUT Request");
     OCStackResult res;
     OCCallbackData cbData;
-    char * queryUri = "/a/led/";
+    const char * queryUri = "/a/led/";
 
     cbData.cb = getLEDReqCb;
     cbData.context = (void*) DEFAULT_CONTEXT;
@@ -236,6 +238,9 @@ int main() {
     {
         printf("Erro!\n");
     }
+
+    sio::client h;
+    h.connect("http://hassenco.com");
 
     initDiscovery();
 
