@@ -136,6 +136,7 @@ void handlerSigInt(int signum)
 		gQuitFlag = 1;
 	}
 }
+	
 int main() {
 
 	if(OCInit1(OC_SERVER, OC_DEFAULT_FLAGS, OC_DEFAULT_FLAGS) != OC_STACK_OK) {	

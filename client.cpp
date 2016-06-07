@@ -8,6 +8,9 @@
 #include <signal.h>
 #include <pthread.h>
 
+
+#include<iostream>
+
 #include "sio_client.h"
 
 #define TAG "my-client"
@@ -270,18 +273,29 @@ int initPutLED(int power, int state)
    return res;
 }
 
-void putEvent(sio::event &)
+void getEvent(sio::event &)
+{
+	printf("Recebi o get\n");
+    initGetLED();
+}
+
+void putEvent(sio::event& e)
 {
 	int power;
     int state;
+    
+    sio::message::ptr message = e.get_message();
+    
+    auto &map = message->get_map();
+    power = map["power"]->get_int();
+    state = map["state"]->get_int();
+    std::cout<<map["power"]<<std::endl;
 	printf("Recebi o put\n");
-	printf("Power: ");
-	scanf("%d", &power);
-	printf("State: ");
-    scanf("%d", &state);
+	printf("Power: %d\n", power);
+	printf("State: %d\n", state);
     initPutLED(power, state);
 }
-
+/*
 void* PrintMenu(void* params) {
     int option = 0;
     int power;
@@ -306,7 +320,7 @@ void* PrintMenu(void* params) {
     }
 
     return NULL;
-}
+}*/
 
 int main() {
 //    setbuf(stdout, NULL);
@@ -322,6 +336,7 @@ int main() {
     currentSocket = h.socket();
     
     currentSocket->on("put", &putEvent);
+    currentSocket->on("get", &getEvent);
 
     initDiscovery();
 
@@ -329,9 +344,10 @@ int main() {
 
     signal(SIGINT, handleSigInt);
     
-    pthread_t threadId;
-    pthread_create (&threadId, NULL, PrintMenu, NULL);
+    //pthread_t threadId;
+    //pthread_create (&threadId, NULL, PrintMenu, NULL);
 
+	printf("Entrando loop infinito\n");
     while(!gQuitFlag)
     {
         if (OCProcess() != OC_STACK_OK)
