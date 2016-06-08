@@ -19,11 +19,28 @@ void onGet(const OC::HeaderOptions& /*headerOptions*/,const OC::OCRepresentation
 		
 		cout<<"Resource URI: "<<rep.getUri()<<endl;
 		
+		sio::message::ptr resource_message = sio::object_message::create();
+		auto &map = resource_message->get_map();
+		
+		map["id"] = sio::string_message::create(rep.getHost()+rep.getUri());
+		
+		sio::message::ptr attr_message = sio::array_message::create();	
+		auto &vector = attr_message->get_vector();
+	
 		for(auto it = rep.begin(); it != rep.end(); ++it)
  	  	{
  	   		cout << "\tAttribute name: "<< it->attrname() << " value: ";
  	   		cout << it->getValueToString()<<endl;
+ 	   		sio::message::ptr message = sio::object_message::create();
+ 	   		auto &map = message->get_map();
+ 	   		map["name"] = sio::string_message::create(it->attrname());
+ 	   		map["value"] = sio::string_message::create(it->getValueToString());
+ 	   		vector.push_back(message); 
+ 	   		
     	}
+    	
+    	map["attrs"] = attr_message; 
+    	currentSocket->emit("get response", resource_message);
 		
 	}else 
 	{
@@ -95,8 +112,6 @@ void foundResource(shared_ptr<OC::OCResource> resource)
 			cout<<"Discovered resource"<<endl;
 			
 			ostringstream id;
-			id << resource->uniqueIdentifier();
-			discoveredResouceMap[id.str()] = resource;
 			
 			cout<<"Resource ID: "<<id.str()<<endl;
 			
@@ -105,6 +120,10 @@ void foundResource(shared_ptr<OC::OCResource> resource)
 			
 			hostAddress = resource->host();
 			cout<<"Resource Address: "<<hostAddress;
+			
+			id <<hostAddress<<resourceUri;
+			
+			discoveredResouceMap[id.str()] = resource;
 			
 			cout << "List of resource types: " << std::endl;
       		for(auto &resourceTypes : resource->getResourceTypes())
@@ -119,6 +138,7 @@ void foundResource(shared_ptr<OC::OCResource> resource)
         		cout << "\t\t" << resourceInterfaces << std::endl;
       		}
       		
+      		currentSocket->emit("discovery", sio::string_message::create(id.str()));
       		
 		}else
 		{
@@ -137,7 +157,6 @@ void getEvent(sio::event& e)
 	string identifier;
 	auto &map = message->get_map();
 	identifier = map["identifier"]->get_string();
-	
 	
 	initGetRequest(discoveredResouceMap[identifier]);
 
@@ -185,6 +204,8 @@ int main()
 	
 	
 	
+	
+	bool print= false;
 	printf("Entering infinite loop\n");
 	while(true){}
 	

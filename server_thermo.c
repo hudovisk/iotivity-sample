@@ -3,13 +3,18 @@
 #include"ocstack.h" 
 #include"ocpayload.h"
 #include"payload_logging.h"
-#include"server.h"
 
+typedef struct thermoResource
+{
+	OCResourceHandle handle;
+	int temperature;
+}thermoResource;
 
-static LEDResource LED;
+static thermoResource thermo;
 int gQuitFlag = 0;
 
-OCRepPayload* getPayload(char* uri, int power, int state)
+
+OCRepPayload* getPayload(char* uri, int temperature)
 {
 	OCRepPayload* payload = OCRepPayloadCreate();
 	
@@ -22,18 +27,15 @@ OCRepPayload* getPayload(char* uri, int power, int state)
 	printf("Montando o Payload\n");
 	
 	OCRepPayloadSetUri(payload, uri);
-	OCRepPayloadSetPropInt(payload, "power", power);
-	OCRepPayloadSetPropInt(payload, "state", state);
+	OCRepPayloadSetPropInt(payload, "temperature", temperature);
 	return payload;
 }
 
-
 OCRepPayload* constructResponse(OCEntityHandlerRequest* ehRequest)
 {
-	return getPayload("/a/led", LED.power, LED.state);
+	return getPayload("/a/thermo", thermo.temperature);
 	
 }
-
 
 OCEntityHandlerResult ProcessGetRequest(OCEntityHandlerRequest* ehRequest, OCRepPayload **payload)
 {
@@ -53,20 +55,15 @@ OCEntityHandlerResult ProcessPutRequest(OCEntityHandlerRequest* ehRequest, OCRep
 	OCRepPayload *putPayload = (OCRepPayload*) ehRequest->payload;
 	OCEntityHandlerResult ehResult;
 	
-	int64_t power;
-	int64_t state;
+	int64_t temperature;
 	
 	printf("Processando put\n");
 	
-	if(OCRepPayloadGetPropInt(putPayload, "power", &power))
+	if(OCRepPayloadGetPropInt(putPayload, "temperature", &temperature))
 	{
-		LED.power = power;
+		thermo.temperature = temperature;
 	}
 	
-	if(OCRepPayloadGetPropInt(putPayload, "state", &state))
-	{
-		LED.state = state;
-	}
 	OIC_LOG_PAYLOAD(INFO, (OCPayload*)putPayload);
 	
 	OCRepPayload *getResp = constructResponse(ehRequest);
@@ -77,9 +74,7 @@ OCEntityHandlerResult ProcessPutRequest(OCEntityHandlerRequest* ehRequest, OCRep
 
 OCEntityHandlerResult OCEntityHandlerCb(OCEntityHandlerFlag flag, OCEntityHandlerRequest *entityHandlerRequest, void* callbackpParam)
 {
-
 	OCEntityHandlerResult ehResult = OC_EH_ERROR;
-    //OCEntityHandlerRequest *request = NULL;
     OCEntityHandlerResponse response;
     OCRepPayload* payload = NULL;
     
@@ -120,13 +115,12 @@ OCEntityHandlerResult OCEntityHandlerCb(OCEntityHandlerFlag flag, OCEntityHandle
 	return ehResult;
 }
 
-int createLEDResource(char* uri, LEDResource* ledResource, int resourceState, int resourcePower)
+int createThermoResource(char* uri, thermoResource* thermoResource, int resourceTemp)
 {
-	ledResource->state = resourceState;
-	ledResource->power = resourcePower;
-	OCStackResult res = OCCreateResource(&(ledResource->handle), "core.led", OC_RSRVD_INTERFACE_DEFAULT, uri, OCEntityHandlerCb, NULL, OC_DISCOVERABLE|OC_OBSERVABLE);
+	thermoResource->temperature = resourceTemp;
+	OCStackResult res = OCCreateResource(&(thermoResource->handle), "core.thermo", OC_RSRVD_INTERFACE_DEFAULT, uri, OCEntityHandlerCb, NULL, OC_DISCOVERABLE|OC_OBSERVABLE);
 	
-	return res;	
+	return res;
 }
 
 void handlerSigInt(int signum)
@@ -136,16 +130,16 @@ void handlerSigInt(int signum)
 		gQuitFlag = 1;
 	}
 }
-	
-int main() {
 
+int main()
+{
 	if(OCInit1(OC_SERVER, OC_DEFAULT_FLAGS, OC_DEFAULT_FLAGS) != OC_STACK_OK) {	
 		printf("Erro\n");
 		return -1;
 	}
 	
-	createLEDResource("/a/led", &LED, 0, 50);
-	printf("LED criado\n");
+	createThermoResource("/a/thermo", &thermo, 20);
+	printf("Thermostat created\n");
 	
 	signal(SIGINT, handlerSigInt);
 	
@@ -165,5 +159,6 @@ int main() {
 	}
 	
 	printf("Terminado\n");
+	
 	return 0;
 }
