@@ -9,6 +9,7 @@ using namespace std;
 
 sio::socket::ptr currentSocket;
 map<string, shared_ptr<OC::OCResource> > discoveredResouceMap;
+map<OC::AttributeType, string> typeMap;
 
 void onGet(const OC::HeaderOptions& /*headerOptions*/,const OC::OCRepresentation& rep, const int eCode)
 {
@@ -35,6 +36,7 @@ void onGet(const OC::HeaderOptions& /*headerOptions*/,const OC::OCRepresentation
  	   		auto &map = message->get_map();
  	   		map["name"] = sio::string_message::create(it->attrname());
  	   		map["value"] = sio::string_message::create(it->getValueToString());
+ 	   		map["type"] = sio::string_message::create(typeMap[it->type()]);
  	   		vector.push_back(message); 
  	   		
     	}
@@ -85,7 +87,7 @@ void initGetRequest(shared_ptr<OC::OCResource> resource)
 	}
 }
 
-void initPutRequest(shared_ptr<OC::OCResource> resource, map<string, sio::message::ptr>& putValues)
+void initPutRequest(shared_ptr<OC::OCResource> resource, vector<sio::message::ptr>& putValues)
 {
 	if(resource)
 	{
@@ -93,13 +95,41 @@ void initPutRequest(shared_ptr<OC::OCResource> resource, map<string, sio::messag
 		
 		OC::QueryParamsMap test;
 		OC::OCRepresentation rep;
-		/*for(auto it = putValues.begin(); it != putValues.end(); ++it)
+		
+		for(int i = 0; i<putValues.size(); i++)
 		{
-			if(it->first != "identifier")
-			{
-				rep.setValue(it->first,it->second);
-			}
-		}*/
+				auto &map = putValues[i]->get_map();
+				
+				if (map["type"]->get_string() == "Null")
+				{
+					string value = NULL;
+					rep.setValue(map["name"]->get_string(), value);
+				}else if(map["type"]->get_string() == "Integer")
+				{
+					int value = atoi(map["value"]->get_string().c_str());
+					rep.setValue(map["name"]->get_string(), value);
+				}else if(map["type"]->get_string() == "Double")
+				{
+				
+				}else if(map["type"]->get_string() == "Boolean")
+				{
+				
+				}else if(map["type"]->get_string() == "String")
+				{
+				
+				}else if(map["type"]->get_string() == "OCRepresentation")
+				{
+				
+				}else if(map["type"]->get_string() == "Vector")
+				{
+				
+				}else if(map["type"]->get_string() == "Binary")
+				{
+				
+				}	
+				
+			
+		}
 		
 		resource->put(rep, test, &onPut);
 	}
@@ -172,9 +202,9 @@ void putEvent(sio::event& e)
 	string identifier;
 	auto &map = message->get_map();
 	identifier = map["identifier"]->get_string();
+	vector<sio::message::ptr> attrs = map["attrs"]->get_vector();
 	
-	
-	initPutRequest(discoveredResouceMap[identifier], map);
+	initPutRequest(discoveredResouceMap[identifier], attrs);
 	
 }
 
@@ -188,6 +218,18 @@ void discoveryEvent(sio::event &)
 		cout<<"No Errors"<<endl;
 	}
 }
+
+void initTypeMap()
+{
+	typeMap[OC::AttributeType::Null] = "Null";
+	typeMap[OC::AttributeType::Integer] = "Integer";
+	typeMap[OC::AttributeType::Double] = "Double";
+	typeMap[OC::AttributeType::Boolean] = "Boolean";
+	typeMap[OC::AttributeType::String] = "String";
+	typeMap[OC::AttributeType::OCRepresentation] = "OCRepresentation";
+	typeMap[OC::AttributeType::Vector] = "Vector";
+	typeMap[OC::AttributeType::Binary] = "Binary";
+}
 int main()
 {
 	OC::PlatformConfig m_platform {
@@ -199,7 +241,9 @@ int main()
         };
 	
 	OC::OCPlatform::Configure(m_platform);
-	
+
+	initTypeMap();
+		
 	sio::client h;
 	h.connect("http://hassenco.com");
 	
