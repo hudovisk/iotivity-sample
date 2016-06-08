@@ -85,7 +85,7 @@ void initGetRequest(shared_ptr<OC::OCResource> resource)
 	}
 }
 
-void initPutRequest(shared_ptr<OC::OCResource> resource/*, auto map putValues*/)
+void initPutRequest(shared_ptr<OC::OCResource> resource, map<string, sio::message::ptr>& putValues)
 {
 	if(resource)
 	{
@@ -93,9 +93,13 @@ void initPutRequest(shared_ptr<OC::OCResource> resource/*, auto map putValues*/)
 		
 		OC::QueryParamsMap test;
 		OC::OCRepresentation rep;
-		
-		rep.setValue("state",50);
-		rep.setValue("power",1);
+		/*for(auto it = putValues.begin(); it != putValues.end(); ++it)
+		{
+			if(it->first != "identifier")
+			{
+				rep.setValue(it->first,it->second);
+			}
+		}*/
 		
 		resource->put(rep, test, &onPut);
 	}
@@ -138,7 +142,7 @@ void foundResource(shared_ptr<OC::OCResource> resource)
         		cout << "\t\t" << resourceInterfaces << std::endl;
       		}
       		
-      		currentSocket->emit("discovery", sio::string_message::create(id.str()));
+      		currentSocket->emit("discovery response", sio::string_message::create(id.str()));
       		
 		}else
 		{
@@ -170,8 +174,19 @@ void putEvent(sio::event& e)
 	identifier = map["identifier"]->get_string();
 	
 	
-	initPutRequest(discoveredResouceMap[identifier]);
+	initPutRequest(discoveredResouceMap[identifier], map);
 	
+}
+
+void discoveryEvent(sio::event &)
+{
+	if( OC::OCPlatform::findResource("",OC_RSRVD_WELL_KNOWN_URI,CT_DEFAULT ,&foundResource) != OC_STACK_OK)
+	{
+		cout<<"Nao achou nada ou erro ao achar"<<endl;
+	}else
+	{
+		cout<<"No Errors"<<endl;
+	}
 }
 int main()
 {
@@ -192,20 +207,8 @@ int main()
 	
 	currentSocket->on("get", &getEvent);
 	currentSocket->on("put", &putEvent);
-	
-	
-	if( OC::OCPlatform::findResource("",OC_RSRVD_WELL_KNOWN_URI,CT_DEFAULT ,&foundResource) != OC_STACK_OK)
-	{
-		cout<<"Nao achou nada ou erro ao achar"<<endl;
-	}else
-	{
-		cout<<"No Errors"<<endl;
-	}
-	
-	
-	
-	
-	bool print= false;
+	currentSocket->on("discovery", &discoveryEvent);
+
 	printf("Entering infinite loop\n");
 	while(true){}
 	
