@@ -13,40 +13,45 @@ map<OC::AttributeType, string> typeMap;
 
 void onGet(const OC::HeaderOptions& /*headerOptions*/,const OC::OCRepresentation& rep, const int eCode)
 {
-
-	if(eCode == OC_STACK_OK)
+	try
 	{
-		cout<<"GET request sucessfull"<<endl;
+		if(eCode == OC_STACK_OK)
+		{
+			cout<<"GET request sucessfull"<<endl;
 		
-		cout<<"Resource URI: "<<rep.getUri()<<endl;
+			cout<<"Resource URI: "<<rep.getUri()<<endl;
 		
-		sio::message::ptr resource_message = sio::object_message::create();
-		auto &map = resource_message->get_map();
+			sio::message::ptr resource_message = sio::object_message::create();
+			auto &map = resource_message->get_map();
 		
-		map["id"] = sio::string_message::create(rep.getHost()+rep.getUri());
+			map["id"] = sio::string_message::create(rep.getHost()+rep.getUri());
 		
-		sio::message::ptr attr_message = sio::array_message::create();	
-		auto &vector = attr_message->get_vector();
+			sio::message::ptr attr_message = sio::array_message::create();	
+			auto &vector = attr_message->get_vector();
 	
-		for(auto it = rep.begin(); it != rep.end(); ++it)
- 	  	{
- 	   		cout << "\tAttribute name: "<< it->attrname() << " value: ";
- 	   		cout << it->getValueToString()<<endl;
- 	   		sio::message::ptr message = sio::object_message::create();
- 	   		auto &map = message->get_map();
- 	   		map["name"] = sio::string_message::create(it->attrname());
- 	   		map["value"] = sio::string_message::create(it->getValueToString());
- 	   		map["type"] = sio::string_message::create(typeMap[it->type()]);
- 	   		vector.push_back(message); 
- 	   		
-    	}
-    	
-    	map["attrs"] = attr_message; 
-    	currentSocket->emit("get response", resource_message);
+			for(auto it = rep.begin(); it != rep.end(); ++it)
+	 	  	{
+	 	   		cout << "\tAttribute name: "<< it->attrname() << " value: ";
+	 	   		cout << it->getValueToString()<<endl;
+	 	   		sio::message::ptr message = sio::object_message::create();
+	 	   		auto &map = message->get_map();
+	 	   		map["name"] = sio::string_message::create(it->attrname());
+	 	   		map["value"] = sio::string_message::create(it->getValueToString());
+	 	   		map["type"] = sio::string_message::create(typeMap[it->type()]);
+	 	   		vector.push_back(message); 
+	 	   		
+			}
+			
+			map["attrs"] = attr_message; 
+			currentSocket->emit("get response", resource_message);
 		
-	}else 
+		}else 
+		{
+			cout<<"GET request failed"<<endl;
+		}
+	}catch(exception& e)
 	{
-		cout<<"GET request failed"<<endl;
+		cout<<"Exception on get request: "<<e.what()<<endl;
 	}
 }
 
@@ -72,7 +77,7 @@ void onPut(const OC::HeaderOptions& /*headerOptions*/, const OC::OCRepresentatio
 		}
 	}catch(exception& e)
 	{
-	
+		cout<<"Exception on put request: "<<e.what()<<endl;
 	}
 }
 
@@ -147,15 +152,14 @@ void foundResource(shared_ptr<OC::OCResource> resource)
 			
 			ostringstream id;
 			
-			cout<<"Resource ID: "<<id.str()<<endl;
-			
 			resourceUri = resource->uri();
 			cout<<"Resource URI: "<<resourceUri<<endl;
 			
 			hostAddress = resource->host();
-			cout<<"Resource Address: "<<hostAddress;
-			
+			cout<<"Resource Address: "<<hostAddress<<endl;
+		
 			id <<hostAddress<<resourceUri;
+			cout<<"Resource ID: "<<id.str()<<endl;
 			
 			discoveredResouceMap[id.str()] = resource;
 			
@@ -212,7 +216,7 @@ void discoveryEvent(sio::event &)
 {
 	if( OC::OCPlatform::findResource("",OC_RSRVD_WELL_KNOWN_URI,CT_DEFAULT ,&foundResource) != OC_STACK_OK)
 	{
-		cout<<"Nao achou nada ou erro ao achar"<<endl;
+		cout<<"Discovered with success!"<<endl;
 	}else
 	{
 		cout<<"No Errors"<<endl;
@@ -230,6 +234,7 @@ void initTypeMap()
 	typeMap[OC::AttributeType::Vector] = "Vector";
 	typeMap[OC::AttributeType::Binary] = "Binary";
 }
+
 int main()
 {
 	OC::PlatformConfig m_platform {
