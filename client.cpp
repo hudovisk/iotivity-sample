@@ -329,7 +329,7 @@ int main() {
     {
         printf("Erro!\n");
     }
-
+/*
     sio::client h;
     h.connect("http://hassenco.com");
 
@@ -337,7 +337,7 @@ int main() {
     
     currentSocket->on("put", &putEvent);
     currentSocket->on("get", &getEvent);
-
+*/
     initDiscovery();
 
     printf("Discovery initialised\n");

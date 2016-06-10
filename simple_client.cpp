@@ -247,15 +247,15 @@ int main()
 	OC::PlatformConfig m_platform {
 		OC::ServiceType::InProc, 
 		OC::ModeType::Client, 
-		"0.0.0.0",
-        0, 
+		CT_DEFAULT,
+        CT_DEFAULT, 
         OC::QualityOfService::HighQos
         };
 	
 	OC::OCPlatform::Configure(m_platform);
 
 	initTypeMap();
-		
+	
 	sio::client h;
 	string server = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI1NzU5YjNhZTZiNzNjY2I5NDg0YzQwNDciLCJuYW1lIjoiSHVkbyIsImVtYWlsIjoiaHVkb0BodWRvLmNvbSIsImlhdCI6MTQ2NTQ5OTE3NiwiZXhwIjoxNDY2MzYzMTc2fQ.sv5hNpOBWgQoggkFJyhbXqQdEPtFCl9nLdM25uvlfwE";
 	map<string,string> query;
@@ -266,6 +266,15 @@ int main()
 	currentSocket->on("get", &getEvent);
 	currentSocket->on("put", &putEvent);
 	currentSocket->on("discovery", &discoveryEvent);
+
+	cout<<"Discover starts\n";
+	if( OC::OCPlatform::findResource("",OC_RSRVD_WELL_KNOWN_URI,CT_IP_USE_V4 ,&foundResource) != OC_STACK_OK)
+	{
+		cout<<"Discover with errors!"<<endl;
+	}else
+	{
+		cout<<"No Errors"<<endl;
+	}
 
 	printf("Entering infinite loop\n");
 	while(true){}
