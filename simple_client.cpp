@@ -43,6 +43,9 @@ void onGet(const OC::HeaderOptions& /*headerOptions*/,const OC::OCRepresentation
 			}
 			
 			map["attrs"] = attr_message; 
+			map["uri"] = sio::string_message::create(rep.getUri());
+			map["host"] = sio::string_message::create(rep.getHost());
+			map["identifier"] = sio::string_message::create(rep.getHost() + rep.getUri());
 			currentSocket->emit("get response", resource_message);
 		
 		}else 
@@ -52,6 +55,17 @@ void onGet(const OC::HeaderOptions& /*headerOptions*/,const OC::OCRepresentation
 	}catch(exception& e)
 	{
 		cout<<"Exception on get request: "<<e.what()<<endl;
+	}
+}
+
+void initGetRequest(shared_ptr<OC::OCResource> resource)
+{
+	if(resource)
+	{
+		cout<<"Processando o get"<<endl;
+		
+		OC::QueryParamsMap test;
+		resource->get(test, &onGet);
 	}
 }
 
@@ -70,7 +84,7 @@ void onPut(const OC::HeaderOptions& /*headerOptions*/, const OC::OCRepresentatio
 	 	   		cout << "\tAttribute name: "<< it->attrname() << " value: ";
 	 	   		cout << it->getValueToString()<<endl;
 			}
-		
+			initGetRequest(discoveredResouceMap[rep.getHost()+rep.getUri()]);
 		}else 
 		{
 			cout<<"PUT request failed"<<endl;
@@ -81,16 +95,7 @@ void onPut(const OC::HeaderOptions& /*headerOptions*/, const OC::OCRepresentatio
 	}
 }
 
-void initGetRequest(shared_ptr<OC::OCResource> resource)
-{
-	if(resource)
-	{
-		cout<<"Processando o get"<<endl;
-		
-		OC::QueryParamsMap test;
-		resource->get(test, &onGet);
-	}
-}
+
 
 void initPutRequest(shared_ptr<OC::OCResource> resource, vector<sio::message::ptr>& putValues)
 {
@@ -176,6 +181,7 @@ void foundResource(shared_ptr<OC::OCResource> resource)
         		cout << "\t\t" << resourceInterfaces << std::endl;
       		}
       		
+      		
       		currentSocket->emit("discovery response", sio::string_message::create(id.str()));
       		
 		}else
@@ -250,8 +256,10 @@ int main()
 	initTypeMap();
 		
 	sio::client h;
-	h.connect("http://hassenco.com");
-	
+	string server = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI1NzU5YjNhZTZiNzNjY2I5NDg0YzQwNDciLCJuYW1lIjoiSHVkbyIsImVtYWlsIjoiaHVkb0BodWRvLmNvbSIsImlhdCI6MTQ2NTQ5OTE3NiwiZXhwIjoxNDY2MzYzMTc2fQ.sv5hNpOBWgQoggkFJyhbXqQdEPtFCl9nLdM25uvlfwE";
+	map<string,string> query;
+	query["token"] = server;
+	h.connect("http://hassenco.com", query);
 	currentSocket = h.socket();
 	
 	currentSocket->on("get", &getEvent);
