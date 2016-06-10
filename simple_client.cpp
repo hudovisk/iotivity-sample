@@ -238,7 +238,7 @@ void initTypeMap()
 	typeMap[OC::AttributeType::String] = "String";
 	typeMap[OC::AttributeType::OCRepresentation] = "OCRepresentation";
 	typeMap[OC::AttributeType::Vector] = "Vector";
-	typeMap[OC::AttributeType::Binary] = "Binary";
+//	typeMap[OC::AttributeType::Binary] = "Binary";
 }
 
 int main()
