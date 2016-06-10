@@ -1,13 +1,27 @@
 #include<signal.h>
 #include<string.h>
+#include<pthread.h>
+#include<unistd.h>
 #include"ocstack.h" 
 #include"ocpayload.h"
 #include"payload_logging.h"
 #include"server.h"
 
+#define MAX_OBSERVERS 8
 
+typedef struct
+{
+    OCObservationId observationId;
+    int valid;
+    OCResourceHandle resourceHandle;
+} Observers;
+
+Observers currentObservers[MAX_OBSERVERS];
 static LEDResource LED;
 int gQuitFlag = 0;
+int underObservation = 0;
+
+pthread_t threadId_observe;
 
 OCRepPayload* getPayload(char* uri, int power, int state)
 {
@@ -75,6 +89,45 @@ OCEntityHandlerResult ProcessPutRequest(OCEntityHandlerRequest* ehRequest, OCRep
 	return ehResult;
 }
 
+void processObserveRegister(OCEntityHandlerRequest *ehRequest)
+{
+	uint8_t i;
+	
+	for(i = 0; i<MAX_OBSERVERS; i++)
+	{
+		if(currentObservers[i].valid == 0)
+		{
+			currentObservers[i].observationId = ehRequest->obsInfo.obsId;
+			currentObservers[i].valid = 1;
+			underObservation = 1;
+			break;
+		}
+	}
+}
+
+void processObserveDeregister(OCEntityHandlerRequest* ehRequest)
+{
+	uint8_t i;
+	int stillObserving = 0;
+	for(i = 0; i<MAX_OBSERVERS; i++)
+	{
+		if(currentObservers[i].observationId == ehRequest->obsInfo.obsId)
+		{
+			currentObservers[i].valid = 0;
+		}
+		
+		if(currentObservers[i].valid == 1)
+		{
+			stillObserving = 1;
+		}
+	}
+	
+	if(stillObserving == 0)
+	{
+		underObservation = 0;
+	}
+}
+
 OCEntityHandlerResult OCEntityHandlerCb(OCEntityHandlerFlag flag, OCEntityHandlerRequest *entityHandlerRequest, void* callbackpParam)
 {
 
@@ -117,6 +170,21 @@ OCEntityHandlerResult OCEntityHandlerCb(OCEntityHandlerFlag flag, OCEntityHandle
     		}
    		}
     }
+    
+    if (flag & OC_OBSERVE_FLAG)
+    {
+        printf("Observe Flag\n");
+        if (OC_OBSERVE_REGISTER == entityHandlerRequest->obsInfo.action)
+        {
+            printf("Received OC_OBSERVE_REGISTER from client\n");
+            processObserveRegister(entityHandlerRequest);
+        }
+        else if (OC_OBSERVE_DEREGISTER == entityHandlerRequest->obsInfo.action)
+        {
+            printf("Received OC_OBSERVE_DEREGISTER from client\n");
+            processObserveDeregister(entityHandlerRequest);
+        }
+    }
 	return ehResult;
 }
 
@@ -136,6 +204,33 @@ void handlerSigInt(int signum)
 		gQuitFlag = 1;
 	}
 }
+
+
+void *ChangeLightRepresentation (void *param)
+{
+    (void)param;
+    OCStackResult result = OC_STACK_ERROR;
+
+    while (!gQuitFlag)
+    {
+        sleep(3);
+        LED.power += 5;
+        if (underObservation)
+        {
+            printf(" =====> Notifying stack of new power level %d\n", LED.power);
+            // Notifying all observers
+            result = OCNotifyAllObservers (LED.handle, OC_NA_QOS);
+            if (OC_STACK_NO_OBSERVERS == result)
+            {
+            	underObservation = 0;
+            }
+       	}else
+        {
+           	printf("Incorrect notification type selected\n");
+        }
+    }
+    return NULL;
+}
 	
 int main() {
 
@@ -148,6 +243,9 @@ int main() {
 	printf("LED criado\n");
 	
 	signal(SIGINT, handlerSigInt);
+	
+	pthread_create (&threadId_observe, NULL, ChangeLightRepresentation, (void *)NULL);
+	
 	
 	printf("Rodando\n");
 	while(!gQuitFlag) 

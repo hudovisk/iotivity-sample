@@ -145,6 +145,76 @@ void initPutRequest(shared_ptr<OC::OCResource> resource, vector<sio::message::pt
 	}
 }
 
+
+void onObserve(const OC::HeaderOptions /*headerOptions*/, const OC::OCRepresentation rep, const int &eCode, const int &sequenceNumber )
+{
+	try
+	{
+		if(eCode == OC_STACK_OK && sequenceNumber != OC_OBSERVE_NO_OPTION)
+		{
+			if(sequenceNumber == OC_OBSERVE_REGISTER) 
+			{
+				cout<<"Observe Registered"<<endl;
+			}else if(sequenceNumber == OC_OBSERVE_DEREGISTER)
+			{
+				cout<<"Observe Deregister"<<endl;
+			}
+			
+			cout<<"OBSERVE RESULT"<<endl;
+			cout<<"Sequence Number "<<sequenceNumber<<endl;
+			
+			sio::message::ptr resource_message = sio::object_message::create();
+			auto &map = resource_message->get_map();
+		
+			map["id"] = sio::string_message::create(rep.getHost()+rep.getUri());
+		
+			sio::message::ptr attr_message = sio::array_message::create();	
+			auto &vector = attr_message->get_vector();
+			
+			for(auto it = rep.begin(); it != rep.end(); ++it)
+	 	  	{
+	 	   		cout << "\tAttribute name: "<< it->attrname() << " value: ";
+	 	   		cout << it->getValueToString()<<endl;
+	 	   		sio::message::ptr message = sio::object_message::create();
+	 	   		auto &map = message->get_map();
+	 	   		map["name"] = sio::string_message::create(it->attrname());
+	 	   		map["value"] = sio::string_message::create(it->getValueToString());
+	 	   		map["type"] = sio::string_message::create(typeMap[it->type()]);
+	 	   		vector.push_back(message); 
+			}
+			
+			map["attrs"] = attr_message; 
+			map["uri"] = sio::string_message::create(rep.getUri());
+			map["host"] = sio::string_message::create(rep.getHost());
+			map["identifier"] = sio::string_message::create(rep.getHost() + rep.getUri());
+			currentSocket->emit("get response", resource_message);
+			
+		}else
+		{
+			if(sequenceNumber == OC_OBSERVE_NO_OPTION)
+			{
+				cout<<"Registration or deregistration error"<<endl;
+			}else
+			{
+				cout<<"Error"<<endl;
+			}
+		}
+	}catch(exception e)
+	{
+		cout<<e.what()<<endl;
+	}
+}
+
+void initObserveRequest(shared_ptr<OC::OCResource> resource)
+{
+	if(resource) 
+	{
+		OC::QueryParamsMap test;
+		cout<<resource->uri()<<" init observe"<<endl;
+		resource->observe(OC::ObserveType::Observe, test, &onObserve);
+	}
+}
+
 void foundResource(shared_ptr<OC::OCResource> resource)
 {
 	string resourceUri;
@@ -221,15 +291,37 @@ void putEvent(sio::event& e)
 void discoveryEvent(sio::event &)
 {
 	cout<<"Discover starts\n";
-	if( OC::OCPlatform::findResource("",OC_RSRVD_WELL_KNOWN_URI,CT_DEFAULT ,&foundResource) != OC_STACK_OK)
+	if( OC::OCPlatform::findResource("",OC_RSRVD_WELL_KNOWN_URI,CT_IP_USE_V4 ,&foundResource) != OC_STACK_OK)
 	{
-		cout<<"Discovered with success!"<<endl;
+		cout<<"Discover with errors!"<<endl;
 	}else
 	{
 		cout<<"No Errors"<<endl;
 	}
 }
+void observeEvent(sio::event& e)
+{
+	cout<<"recebi um observe"<<endl;
+	sio::message::ptr message = e.get_message();
+	string identifier;
+	auto &map = message->get_map();
+	identifier = map["identifier"]->get_string();
+	
+	cout<<identifier<<endl;
+	
+	initObserveRequest(discoveredResouceMap[identifier]);
+}
 
+void deobserveEvent(sio::event& e)
+{
+	cout<<"recebi um observe"<<endl;
+	sio::message::ptr message = e.get_message();
+	string identifier;
+	auto &map = message->get_map();
+	identifier = map["identifier"]->get_string();
+	
+	discoveredResouceMap[identifier]->cancelObserve();
+}
 void initTypeMap()
 {
 	typeMap[OC::AttributeType::Null] = "Null";
@@ -260,21 +352,15 @@ int main()
 	string server = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI1NzU5YjNhZTZiNzNjY2I5NDg0YzQwNDciLCJuYW1lIjoiSHVkbyIsImVtYWlsIjoiaHVkb0BodWRvLmNvbSIsImlhdCI6MTQ2NTQ5OTE3NiwiZXhwIjoxNDY2MzYzMTc2fQ.sv5hNpOBWgQoggkFJyhbXqQdEPtFCl9nLdM25uvlfwE";
 	map<string,string> query;
 	query["token"] = server;
-	h.connect("http://hassenco.com", query);
+	h.connect("http://52.39.6.143", query);
 	currentSocket = h.socket();
 	
 	currentSocket->on("get", &getEvent);
 	currentSocket->on("put", &putEvent);
 	currentSocket->on("discovery", &discoveryEvent);
+	currentSocket->on("observe", &observeEvent);
+	currentSocket->on("deobserve", &deobserveEvent);
 
-	cout<<"Discover starts\n";
-	if( OC::OCPlatform::findResource("",OC_RSRVD_WELL_KNOWN_URI,CT_IP_USE_V4 ,&foundResource) != OC_STACK_OK)
-	{
-		cout<<"Discover with errors!"<<endl;
-	}else
-	{
-		cout<<"No Errors"<<endl;
-	}
 
 	printf("Entering infinite loop\n");
 	while(true){}
