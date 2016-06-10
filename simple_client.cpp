@@ -220,6 +220,7 @@ void putEvent(sio::event& e)
 
 void discoveryEvent(sio::event &)
 {
+	cout<<"Discover starts\n";
 	if( OC::OCPlatform::findResource("",OC_RSRVD_WELL_KNOWN_URI,CT_DEFAULT ,&foundResource) != OC_STACK_OK)
 	{
 		cout<<"Discovered with success!"<<endl;
