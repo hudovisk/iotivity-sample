@@ -227,6 +227,8 @@ void foundResource(shared_ptr<OC::OCResource> resource)
 			
 			ostringstream id;
 			
+			cout<<"Unique ID: "<<resource->uniqueIdentifier<<endl;
+			
 			resourceUri = resource->uri();
 			cout<<"Resource URI: "<<resourceUri<<endl;
 			
