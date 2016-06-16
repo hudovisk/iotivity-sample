@@ -227,7 +227,7 @@ void foundResource(shared_ptr<OC::OCResource> resource)
 			
 			ostringstream id;
 			
-			cout<<"Unique ID: "<<resource->uniqueIdentifier<<endl;
+			cout<<"Unique ID: "<<resource->uniqueIdentifier()<<endl;
 			
 			resourceUri = resource->uri();
 			cout<<"Resource URI: "<<resourceUri<<endl;
@@ -241,20 +241,35 @@ void foundResource(shared_ptr<OC::OCResource> resource)
 			discoveredResouceMap[id.str()] = resource;
 			
 			cout << "List of resource types: " << std::endl;
-      		for(auto &resourceTypes : resource->getResourceTypes())
+			sio::message::ptr type_message = sio::array_message::create();	
+			auto &type_vector = type_message->get_vector();
+      		for(auto &resourceType : resource->getResourceTypes())
      		{
-        		cout << "\t\t" << resourceTypes << std::endl;
+        		cout << "\t\t" << resourceType << std::endl;
+        		type_vector.push_back(sio::string_message::create(resourceType));
       		}
  
       		// Get the resource interfaces
       		cout << "List of resource interfaces: " << std::endl;
-    		for(auto &resourceInterfaces : resource->getResourceInterfaces())
+      		sio::message::ptr interface_message = sio::array_message::create();	
+			auto &interface_vector = interface_message->get_vector();
+    		for(auto &resourceInterface : resource->getResourceInterfaces())
       		{
-        		cout << "\t\t" << resourceInterfaces << std::endl;
+        		cout << "\t\t" << resourceInterface << std::endl;
+        		interface_vector.push_back(sio::string_message::create(resourceInterface));
       		}
       		
+      		sio::message::ptr resource_message = sio::object_message::create();
+			auto &map = resource_message->get_map();
+			
+			map["id"] = sio::string_message::create(id.str());
+			map["uri"] = sio::string_message::create(resource->uri());
+			map["host"] = sio::string_message::create(resource->host());
+			map["isObservable"] = sio::bool_message::create(resource->isObservable());
+			map["rt"] = type_message;
+			map["if"] = interface_message;
       		
-      		currentSocket->emit("discovery response", sio::string_message::create(id.str()));
+      		currentSocket->emit("discovery response", resource_message);
       		
 		}else
 		{
