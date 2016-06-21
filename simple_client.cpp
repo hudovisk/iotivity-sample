@@ -1,152 +1,260 @@
-#include "ocstack.h"
-#include "OCApi.h"
-#include "OCPlatform.h"
-#include "OCResource.h"
-#include "sio_client.h"
 
+#include "simple_client.h"
 
-using namespace std;
+static const std::string RESOURCE_REP_SOCKET_CMD = "get response";
+static const std::string RESOURCE_SOCKET_CMD = "discovery response";
 
-sio::socket::ptr currentSocket;
-map<string, shared_ptr<OC::OCResource> > discoveredResouceMap;
-map<OC::AttributeType, string> typeMap;
+static const std::string DISCOVER_SOCKET_CMD = "discovery";
+static const std::string GET_SOCKET_CMD = "get";
+static const std::string PUT_SOCKET_CMD = "put";
+static const std::string OBSERVE_SOCKET_CMD = "observe";
+static const std::string DEOBSERVE_SOCKET_CMD = "deobserve";
 
-void onGet(const OC::HeaderOptions& /*headerOptions*/,const OC::OCRepresentation& rep, const int eCode)
+typedef std::map<std::string, std::shared_ptr<OC::OCResource>> ResourceMap;
+
+static sio::socket::ptr gSocket;
+static ResourceMap gDiscoveredResourcesMap;
+
+std::string iotAttrTypeToString(OC::AttributeType type)
+{
+	switch(type)
+	{
+		case OC::AttributeType::Null:
+			return "Null";
+		case OC::AttributeType::Integer:
+			return "Integer";	 
+		case OC::AttributeType::Double: 
+			return "Double";
+		case OC::AttributeType::Boolean: 
+			return "Boolean";
+		case OC::AttributeType::String: 
+			return "String";
+		case OC::AttributeType::OCRepresentation:
+			return "OCRepresentation";
+		case OC::AttributeType::Vector:
+			return "Vector";
+		default:
+			std::cout<<"Unsuported Iot Type!"<<std::endl;
+			return "";
+	}
+}
+
+void mapSocketAttrToIot(const sio::message::ptr attr, OC::OCRepresentation* rep)
+{
+	auto& map = attr->get_map();
+	const std::string type = map["type"]->get_string();
+	const std::string name = map["name"]->get_string();
+	
+	if (type == "Null")
+	{
+		std::string value = NULL;
+		rep->setValue(name, value);
+	}
+	else if(map["type"]->get_string() == "Integer")
+	{
+		int value = map["value"]->get_int();
+		rep->setValue(name, value);
+	}
+	else if(map["type"]->get_string() == "Double")
+	{
+		double value = map["value"]->get_double();
+		rep->setValue(name, value);
+	}
+	else if(map["type"]->get_string() == "Boolean")
+	{
+		bool value = map["value"]->get_bool();
+		rep->setValue(name, value);	
+	}
+	else if(map["type"]->get_string() == "String")
+	{
+		std::string value = map["value"]->get_string();
+		rep->setValue(name, value.c_str());
+	}
+	else 
+	{
+		std::cout<<"Unsuported type: " << type << std::endl;
+	}
+}
+
+void mapIotAttrToSocket(const OC::OCRepresentation::AttributeItem& attrItem,
+	 sio::message::ptr attr)
+{
+	auto& map = attr->get_map();
+	const std::string type = iotAttrTypeToString(attrItem.type());
+	
+	map["name"] = sio::string_message::create(attrItem.attrname());
+	map["type"] = sio::string_message::create(type);
+	
+	if(map["type"]->get_string() == "Integer")
+	{
+		int value = attrItem.getValue<int>();
+		map["value"] = sio::int_message::create(value);
+	}
+	else if(map["type"]->get_string() == "Double")
+	{
+		double value = attrItem.getValue<double>();
+		map["value"] = sio::double_message::create(value);
+	}
+	else if(map["type"]->get_string() == "Boolean")
+	{
+		bool value = attrItem.getValue<bool>();
+		map["value"] = sio::bool_message::create(value);	
+	}
+	else if(map["type"]->get_string() == "String")
+	{
+		std::string value = attrItem.getValue<std::string>();
+		map["value"] = sio::string_message::create(value);
+	}
+	else 
+	{
+		std::cout<<"Unsuported type: " << type << std::endl;
+	}
+}
+
+void sendSocketResourceRep(const OC::OCRepresentation& rep)
+{
+	sio::message::ptr resource_message = sio::object_message::create();
+	auto &map = resource_message->get_map();
+
+	map["id"] = sio::string_message::create(rep.getHost()+rep.getUri());
+
+	sio::message::ptr attr_message = sio::array_message::create();	
+	auto &vector = attr_message->get_vector();
+	for(auto it = rep.begin(); it != rep.end(); ++it)
+  	{
+   		std::cout << "\tAttribute name: "<< it->attrname() << " value: ";
+   		std::cout << it->getValueToString()<<std::endl;
+   		
+   		sio::message::ptr message = sio::object_message::create();
+   		
+   		mapIotAttrToSocket(*it, message);
+   		
+   		vector.push_back(message);
+	}
+	
+	map["attrs"] = attr_message; 
+	map["uri"] = sio::string_message::create(rep.getUri());
+	map["host"] = sio::string_message::create(rep.getHost());
+	map["identifier"] = sio::string_message::create(rep.getHost() + rep.getUri());
+	
+	gSocket->emit(RESOURCE_REP_SOCKET_CMD, resource_message);
+}
+
+/*
+ * GET Request
+ */
+void onIotGetCB(const OC::HeaderOptions& /*headerOptions*/,
+      const OC::OCRepresentation& rep,
+      const int eCode)
 {
 	try
 	{
 		if(eCode == OC_STACK_OK)
 		{
-			cout<<"GET request sucessfull"<<endl;
+			std::cout<<"GET request sucessfull"<<std::endl;
+			std::cout<<"Resource URI: "<<rep.getUri()<<std::endl;
 		
-			cout<<"Resource URI: "<<rep.getUri()<<endl;
-		
-			sio::message::ptr resource_message = sio::object_message::create();
-			auto &map = resource_message->get_map();
-		
-			map["id"] = sio::string_message::create(rep.getHost()+rep.getUri());
-		
-			sio::message::ptr attr_message = sio::array_message::create();	
-			auto &vector = attr_message->get_vector();
-	
-			for(auto it = rep.begin(); it != rep.end(); ++it)
-	 	  	{
-	 	   		cout << "\tAttribute name: "<< it->attrname() << " value: ";
-	 	   		cout << it->getValueToString()<<endl;
-	 	   		sio::message::ptr message = sio::object_message::create();
-	 	   		auto &map = message->get_map();
-	 	   		map["name"] = sio::string_message::create(it->attrname());
-	 	   		map["value"] = sio::string_message::create(it->getValueToString());
-	 	   		map["type"] = sio::string_message::create(typeMap[it->type()]);
-	 	   		vector.push_back(message); 
-	 	   		
-			}
-			
-			map["attrs"] = attr_message; 
-			map["uri"] = sio::string_message::create(rep.getUri());
-			map["host"] = sio::string_message::create(rep.getHost());
-			map["identifier"] = sio::string_message::create(rep.getHost() + rep.getUri());
-			currentSocket->emit("get response", resource_message);
-		
-		}else 
-		{
-			cout<<"GET request failed"<<endl;
+			sendSocketResourceRep(rep);
 		}
-	}catch(exception& e)
+		else 
+		{
+			std::cout<<"GET request failed"<<std::endl;
+		}
+	}
+	catch(std::exception& e)
 	{
-		cout<<"Exception on get request: "<<e.what()<<endl;
+		std::cout<<"std::exception on get request: "<<e.what()<<std::endl;
 	}
 }
 
-void initGetRequest(shared_ptr<OC::OCResource> resource)
+void socketGetEventCB(sio::event& e)
 {
+	sio::message::ptr message = e.get_message();
+	std::string identifier;
+	auto &map = message->get_map();
+	identifier = map["identifier"]->get_string();
+
+	std::shared_ptr<OC::OCResource> resource = gDiscoveredResourcesMap[identifier]; 
 	if(resource)
 	{
-		cout<<"Processando o get"<<endl;
+		std::cout<<"Making a get request to: "<<resource->uri()<<std::endl;
 		
 		OC::QueryParamsMap test;
-		resource->get(test, &onGet);
+		resource->get(test, &onIotGetCB);
+	}
+	else
+	{
+		std::cout<<"Invalid resource to make get request"<<std::endl;
 	}
 }
 
-void onPut(const OC::HeaderOptions& /*headerOptions*/, const OC::OCRepresentation& rep, const int eCode)
+
+/*
+ * PUT Request
+ */
+void onIotPutCB(const OC::HeaderOptions& /*headerOptions*/,
+	 const OC::OCRepresentation& rep, const int eCode)
 {
 	try
 	{
 		if(eCode == OC_STACK_OK)
 		{
-			cout<<"PUT request sucessfull"<<endl;
-		
-			cout<<"Resource URI: "<<rep.getUri()<<endl;
+			std::cout<<"PUT request sucessfull"<<std::endl;
+			std::cout<<"Resource URI: "<<rep.getUri()<<std::endl;
 		
 			for(auto it = rep.begin(); it != rep.end(); ++it)
 	 	  	{
-	 	   		cout << "\tAttribute name: "<< it->attrname() << " value: ";
-	 	   		cout << it->getValueToString()<<endl;
+	 	   		std::cout << "\tAttribute name: "<< it->attrname() << " value: ";
+	 	   		std::cout << it->getValueToString()<<std::endl;
 			}
-			initGetRequest(discoveredResouceMap[rep.getHost()+rep.getUri()]);
-		}else 
-		{
-			cout<<"PUT request failed"<<endl;
+			
+			sendSocketResourceRep(rep);
 		}
-	}catch(exception& e)
+		else 
+		{
+			std::cout<<"PUT request failed"<<std::endl;
+		}
+	}catch(std::exception& e)
 	{
-		cout<<"Exception on put request: "<<e.what()<<endl;
+		std::cout<<"std::exception on put request: "<<e.what()<<std::endl;
 	}
 }
 
-
-
-void initPutRequest(shared_ptr<OC::OCResource> resource, vector<sio::message::ptr>& putValues)
+void socketPutEventCB(sio::event& e)
 {
+	sio::message::ptr message = e.get_message();
+	auto &map = message->get_map();
+	
+	std::string identifier = map["identifier"]->get_string();
+	std::vector<sio::message::ptr> attrs = map["attrs"]->get_vector();
+	
+	std::shared_ptr<OC::OCResource> resource = gDiscoveredResourcesMap[identifier];
 	if(resource)
 	{
-		cout<<"Processando o put"<<endl;
+		std::cout<<"Making a put request to: "<<resource->uri()<<std::endl;
 		
 		OC::QueryParamsMap test;
 		OC::OCRepresentation rep;
-		
-		for(int i = 0; i<putValues.size(); i++)
+	
+		for(int i = 0; i < attrs.size(); i++)
 		{
-				auto &map = putValues[i]->get_map();
-				
-				if (map["type"]->get_string() == "Null")
-				{
-					string value = NULL;
-					rep.setValue(map["name"]->get_string(), value);
-				}else if(map["type"]->get_string() == "Integer")
-				{
-					int value = atoi(map["value"]->get_string().c_str());
-					rep.setValue(map["name"]->get_string(), value);
-				}else if(map["type"]->get_string() == "Double")
-				{
-				
-				}else if(map["type"]->get_string() == "Boolean")
-				{
-				
-				}else if(map["type"]->get_string() == "String")
-				{
-				
-				}else if(map["type"]->get_string() == "OCRepresentation")
-				{
-				
-				}else if(map["type"]->get_string() == "Vector")
-				{
-				
-				}else if(map["type"]->get_string() == "Binary")
-				{
-				
-				}	
-				
-			
+			mapSocketAttrToIot(attrs[i], &rep);
 		}
 		
-		resource->put(rep, test, &onPut);
+		resource->put(rep, test, &onIotPutCB);
+	}
+	else
+	{
+		std::cout<<"Invalid resource to make get request"<<std::endl;	
 	}
 }
 
-
-void onObserve(const OC::HeaderOptions /*headerOptions*/, const OC::OCRepresentation rep, const int &eCode, const int &sequenceNumber )
+/*
+ * Observe Request
+ */
+void onIotObserveCB(const OC::HeaderOptions /*headerOptions*/,
+	 const OC::OCRepresentation rep, const int &eCode,
+	 const int &sequenceNumber )
 {
 	try
 	{
@@ -154,108 +262,104 @@ void onObserve(const OC::HeaderOptions /*headerOptions*/, const OC::OCRepresenta
 		{
 			if(sequenceNumber == OC_OBSERVE_REGISTER) 
 			{
-				cout<<"Observe Registered"<<endl;
-			}else if(sequenceNumber == OC_OBSERVE_DEREGISTER)
+				std::cout<<"Observe Registered"<<std::endl;
+			}
+			else if(sequenceNumber == OC_OBSERVE_DEREGISTER)
 			{
-				cout<<"Observe Deregister"<<endl;
+				std::cout<<"Observe Deregister"<<std::endl;
 			}
 			
-			cout<<"OBSERVE RESULT"<<endl;
-			cout<<"Sequence Number "<<sequenceNumber<<endl;
+			std::cout<<"OBSERVE RESULT"<<std::endl;
+			std::cout<<"Sequence Number "<<sequenceNumber<<std::endl;
 			
-			sio::message::ptr resource_message = sio::object_message::create();
-			auto &map = resource_message->get_map();
-		
-			map["id"] = sio::string_message::create(rep.getHost()+rep.getUri());
-		
-			sio::message::ptr attr_message = sio::array_message::create();	
-			auto &vector = attr_message->get_vector();
-			
-			for(auto it = rep.begin(); it != rep.end(); ++it)
-	 	  	{
-	 	   		cout << "\tAttribute name: "<< it->attrname() << " value: ";
-	 	   		cout << it->getValueToString()<<endl;
-	 	   		sio::message::ptr message = sio::object_message::create();
-	 	   		auto &map = message->get_map();
-	 	   		map["name"] = sio::string_message::create(it->attrname());
-	 	   		map["value"] = sio::string_message::create(it->getValueToString());
-	 	   		map["type"] = sio::string_message::create(typeMap[it->type()]);
-	 	   		vector.push_back(message); 
-			}
-			
-			map["attrs"] = attr_message; 
-			map["uri"] = sio::string_message::create(rep.getUri());
-			map["host"] = sio::string_message::create(rep.getHost());
-			map["identifier"] = sio::string_message::create(rep.getHost() + rep.getUri());
-			currentSocket->emit("get response", resource_message);
-			
-		}else
+			sendSocketResourceRep(rep);
+		}
+		else
 		{
 			if(sequenceNumber == OC_OBSERVE_NO_OPTION)
 			{
-				cout<<"Registration or deregistration error"<<endl;
+				std::cout<<"Registration or deregistration error"<<std::endl;
 			}else
 			{
-				cout<<"Error"<<endl;
+				std::cout<<"Error"<<std::endl;
 			}
 		}
-	}catch(exception e)
+	}catch(std::exception e)
 	{
-		cout<<e.what()<<endl;
+		std::cout<<e.what()<<std::endl;
 	}
 }
 
-void initObserveRequest(shared_ptr<OC::OCResource> resource)
+void socketObserveEventCB(sio::event& e)
 {
+	std::cout<<"Observe cmd received"<<std::endl;
+	sio::message::ptr message = e.get_message();
+	std::string identifier;
+	auto &map = message->get_map();
+	identifier = map["identifier"]->get_string();
+	
+	std::shared_ptr<OC::OCResource> resource = gDiscoveredResourcesMap[identifier];
 	if(resource) 
 	{
 		OC::QueryParamsMap test;
-		cout<<resource->uri()<<" init observe"<<endl;
-		resource->observe(OC::ObserveType::Observe, test, &onObserve);
+		std::cout<<resource->uri()<<" init observe"<<std::endl;
+		resource->observe(OC::ObserveType::Observe, test, &onIotObserveCB);
 	}
 }
 
-void foundResource(shared_ptr<OC::OCResource> resource)
+void socketDeobserveEventCB(sio::event& e)
 {
-	string resourceUri;
-	string hostAddress;
+	std::cout<<"SIO: Deobserve cmd received"<<std::endl;
+	sio::message::ptr message = e.get_message();
+	std::string identifier;
+	auto &map = message->get_map();
+	identifier = map["identifier"]->get_string();
+
+	std::shared_ptr<OC::OCResource> resource = gDiscoveredResourcesMap[identifier];
+	if(resource) 
+	{
+		resource->cancelObserve();
+	}
+}
+
+/*
+ * Discovery Request/CB
+ */
+void onIotDiscoveryCB(std::shared_ptr<OC::OCResource> resource)
+{
+	std::string resourceUri;
+	std::string hostAddress;
 	
 	try{
 		if(resource)
 		{
-			cout<<"Discovered resource"<<endl;
-			
-			ostringstream id;
-			
-			cout<<"Unique ID: "<<resource->uniqueIdentifier()<<endl;
-			
-			resourceUri = resource->uri();
-			cout<<"Resource URI: "<<resourceUri<<endl;
-			
-			hostAddress = resource->host();
-			cout<<"Resource Address: "<<hostAddress<<endl;
+			std::cout<<"IOT: Discovered resource"<<std::endl;
+			std::cout<<"\tUnique ID: "<<resource->uniqueIdentifier()<<std::endl;
+			std::cout<<"\tResource URI: "<<resource->uri()<<std::endl;
+			std::cout<<"\tResource Address: "<<resource->host()<<std::endl;
 		
-			id <<hostAddress<<resourceUri;
-			cout<<"Resource ID: "<<id.str()<<endl;
+			std::ostringstream id;
+			id<<resource->uri()<<resource->host();
+			std::cout<<"\tResource ID: "<<id.str()<<std::endl;
 			
-			discoveredResouceMap[id.str()] = resource;
+			gDiscoveredResourcesMap[id.str()] = resource;
 			
-			cout << "List of resource types: " << std::endl;
+			std::cout << "\tList of resource types: " << std::endl;
 			sio::message::ptr type_message = sio::array_message::create();	
 			auto &type_vector = type_message->get_vector();
       		for(auto &resourceType : resource->getResourceTypes())
      		{
-        		cout << "\t\t" << resourceType << std::endl;
+        		std::cout << "\t\t" << resourceType << std::endl;
         		type_vector.push_back(sio::string_message::create(resourceType));
       		}
  
       		// Get the resource interfaces
-      		cout << "List of resource interfaces: " << std::endl;
+      		std::cout << "\tList of resource interfaces: " << std::endl;
       		sio::message::ptr interface_message = sio::array_message::create();	
 			auto &interface_vector = interface_message->get_vector();
     		for(auto &resourceInterface : resource->getResourceInterfaces())
       		{
-        		cout << "\t\t" << resourceInterface << std::endl;
+        		std::cout << "\t\t" << resourceInterface << std::endl;
         		interface_vector.push_back(sio::string_message::create(resourceInterface));
       		}
       		
@@ -269,86 +373,41 @@ void foundResource(shared_ptr<OC::OCResource> resource)
 			map["rt"] = type_message;
 			map["if"] = interface_message;
       		
-      		currentSocket->emit("discovery response", resource_message);
-      		
-		}else
-		{
-			cout<<"Resource not found!"<<endl;
+      		gSocket->emit(RESOURCE_SOCKET_CMD, resource_message);
 		}
-	}catch(exception& e)
+		else
+		{
+			std::cout<<"Resource not found!"<<std::endl;
+		}
+	}catch(std::exception& e)
 	{
-		cout<<"Error "<<e.what()<<endl;
+		std::cout<<"Error "<<e.what()<<std::endl;
 	}
 }
 
-
-void getEvent(sio::event& e)
+void socketDiscoveryEventCB(sio::event &)
 {
-	sio::message::ptr message = e.get_message();
-	string identifier;
-	auto &map = message->get_map();
-	identifier = map["identifier"]->get_string();
-	
-	initGetRequest(discoveredResouceMap[identifier]);
-
-}
-
-void putEvent(sio::event& e)
-{
-	sio::message::ptr message = e.get_message();
-	string identifier;
-	auto &map = message->get_map();
-	identifier = map["identifier"]->get_string();
-	vector<sio::message::ptr> attrs = map["attrs"]->get_vector();
-	
-	initPutRequest(discoveredResouceMap[identifier], attrs);
-	
-}
-
-void discoveryEvent(sio::event &)
-{
-	cout<<"Discover starts\n";
-	if( OC::OCPlatform::findResource("",OC_RSRVD_WELL_KNOWN_URI,CT_IP_USE_V4 ,&foundResource) != OC_STACK_OK)
+	std::cout<<"Discover starts"<<std::endl;
+	if( OC::OCPlatform::findResource("",OC_RSRVD_WELL_KNOWN_URI,CT_IP_USE_V4 ,&onIotDiscoveryCB) != OC_STACK_OK)
 	{
-		cout<<"Discover with errors!"<<endl;
-	}else
+		std::cout<<"Discover with errors!"<<std::endl;
+	}
+	else
 	{
-		cout<<"No Errors"<<endl;
+		std::cout<<"No Errors"<<std::endl;
 	}
 }
-void observeEvent(sio::event& e)
-{
-	cout<<"recebi um observe"<<endl;
-	sio::message::ptr message = e.get_message();
-	string identifier;
-	auto &map = message->get_map();
-	identifier = map["identifier"]->get_string();
-	
-	cout<<identifier<<endl;
-	
-	initObserveRequest(discoveredResouceMap[identifier]);
-}
 
-void deobserveEvent(sio::event& e)
+sio::socket::ptr initSocket()
 {
-	cout<<"recebi um observe"<<endl;
-	sio::message::ptr message = e.get_message();
-	string identifier;
-	auto &map = message->get_map();
-	identifier = map["identifier"]->get_string();
+	sio::client h;
+	std::string server = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI1NzU5YjNhZTZiNzNjY2I5NDg0YzQwNDciLCJuYW1lIjoiSHVkbyIsImVtYWlsIjoiaHVkb0BodWRvLmNvbSIsImlhdCI6MTQ2NTQ5OTE3NiwiZXhwIjoxNDY2MzYzMTc2fQ.sv5hNpOBWgQoggkFJyhbXqQdEPtFCl9nLdM25uvlfwE";
 	
-	discoveredResouceMap[identifier]->cancelObserve();
-}
-void initTypeMap()
-{
-	typeMap[OC::AttributeType::Null] = "Null";
-	typeMap[OC::AttributeType::Integer] = "Integer";
-	typeMap[OC::AttributeType::Double] = "Double";
-	typeMap[OC::AttributeType::Boolean] = "Boolean";
-	typeMap[OC::AttributeType::String] = "String";
-	typeMap[OC::AttributeType::OCRepresentation] = "OCRepresentation";
-	typeMap[OC::AttributeType::Vector] = "Vector";
-//	typeMap[OC::AttributeType::Binary] = "Binary";
+	std::map<std::string, std::string> query;
+	query["token"] = server;
+	
+	h.connect("http://52.39.6.143", query);
+	return h.socket();
 }
 
 int main()
@@ -362,22 +421,14 @@ int main()
         };
 	
 	OC::OCPlatform::Configure(m_platform);
-
-	initTypeMap();
 	
-	sio::client h;
-	string server = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI1NzU5YjNhZTZiNzNjY2I5NDg0YzQwNDciLCJuYW1lIjoiSHVkbyIsImVtYWlsIjoiaHVkb0BodWRvLmNvbSIsImlhdCI6MTQ2NTQ5OTE3NiwiZXhwIjoxNDY2MzYzMTc2fQ.sv5hNpOBWgQoggkFJyhbXqQdEPtFCl9nLdM25uvlfwE";
-	map<string,string> query;
-	query["token"] = server;
-	h.connect("http://52.39.6.143", query);
-	currentSocket = h.socket();
-	
-	currentSocket->on("get", &getEvent);
-	currentSocket->on("put", &putEvent);
-	currentSocket->on("discovery", &discoveryEvent);
-	currentSocket->on("observe", &observeEvent);
-	currentSocket->on("deobserve", &deobserveEvent);
+	gSocket = initSocket();
 
+	gSocket->on(GET_SOCKET_CMD, &socketGetEventCB);
+	gSocket->on(PUT_SOCKET_CMD, &socketPutEventCB);
+	gSocket->on(DISCOVER_SOCKET_CMD, &socketDiscoveryEventCB);
+	gSocket->on(OBSERVE_SOCKET_CMD, &socketObserveEventCB);
+	gSocket->on(DEOBSERVE_SOCKET_CMD, &socketDeobserveEventCB);
 
 	printf("Entering infinite loop\n");
 	while(true){}
