@@ -406,7 +406,7 @@ sio::socket::ptr initSocket()
 	std::map<std::string, std::string> query;
 	query["token"] = server;
 	
-	h.connect("http://52.39.6.143", query);
+	h.connect("http://52.38.117.152", query);
 	return h.socket();
 }
 
