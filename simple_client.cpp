@@ -1,6 +1,10 @@
 
 #include "simple_client.h"
 
+#include "curl_easy.h"
+#include "curl_header.h"
+#include "curl_pair.h"
+
 static const std::string RESOURCE_REP_SOCKET_CMD = "get response";
 static const std::string RESOURCE_SOCKET_CMD = "discovery response";
 
@@ -400,14 +404,6 @@ void socketDiscoveryEventCB(sio::event &)
 
 sio::socket::ptr initSocket()
 {
-	sio::client h;
-	std::string server = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI1NzU5YjNhZTZiNzNjY2I5NDg0YzQwNDciLCJuYW1lIjoiSHVkbyIsImVtYWlsIjoiaHVkb0BodWRvLmNvbSIsImlhdCI6MTQ2NTQ5OTE3NiwiZXhwIjoxNDY2MzYzMTc2fQ.sv5hNpOBWgQoggkFJyhbXqQdEPtFCl9nLdM25uvlfwE";
-	
-	std::map<std::string, std::string> query;
-	query["token"] = server;
-	
-	h.connect("http://52.39.6.143", query);
-	return h.socket();
 }
 
 int main()
@@ -422,7 +418,40 @@ int main()
 	
 	OC::OCPlatform::Configure(m_platform);
 	
-	gSocket = initSocket();
+	// Create a stringstream object
+    std::ostringstream strStream;
+    // Create a curl_ios object, passing the stream object.
+    curl::curl_ios<std::ostringstream> writer(strStream);
+
+	curl::curl_easy easy(writer);
+	curl::curl_header header;
+	std::string body("{\"email\":\"hudo@hudo.com\", \"password\": \"123\"}");
+	header.add("Content-Type: application/json");
+	easy.add(curl::curl_pair<CURLoption, curl::curl_header>(CURLOPT_HTTPHEADER, header));
+	easy.add(curl::curl_pair<CURLoption, std::string>(CURLOPT_URL, "http://hassenco.com/api/auth/login"));
+	easy.add(curl::curl_pair<CURLoption, std::string>(CURLOPT_POSTFIELDS, body));
+	try {
+		easy.perform();
+	} catch (curl::curl_easy_exception error) {
+		error.print_traceback();
+	}
+
+	std::string str = strStream.str();
+	std::string token = str.substr(10, str.size() - 12);
+
+	std::cout << "token: " << token << std::endl;
+
+	sio::client h;
+
+	std::map<std::string, std::string> query;
+	query["token"] = token;
+	
+	h.connect("http://hassenco.com", query);
+	gSocket = h.socket();
+
+	std::cout << "Got socket" <<std::endl;
+
+	std::cout<< "Setting socket callbacks" <<std::endl;
 
 	gSocket->on(GET_SOCKET_CMD, (sio::socket::event_listener) &socketGetEventCB);
 	gSocket->on(PUT_SOCKET_CMD, (sio::socket::event_listener) &socketPutEventCB);
