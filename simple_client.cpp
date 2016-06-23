@@ -424,11 +424,11 @@ int main()
 	
 	gSocket = initSocket();
 
-	gSocket->on(GET_SOCKET_CMD, &socketGetEventCB);
-	gSocket->on(PUT_SOCKET_CMD, &socketPutEventCB);
-	gSocket->on(DISCOVER_SOCKET_CMD, &socketDiscoveryEventCB);
-	gSocket->on(OBSERVE_SOCKET_CMD, &socketObserveEventCB);
-	gSocket->on(DEOBSERVE_SOCKET_CMD, &socketDeobserveEventCB);
+	gSocket->on(GET_SOCKET_CMD, (sio::socket::event_listener) &socketGetEventCB);
+	gSocket->on(PUT_SOCKET_CMD, (sio::socket::event_listener) &socketPutEventCB);
+	gSocket->on(DISCOVER_SOCKET_CMD, (sio::socket::event_listener) &socketDiscoveryEventCB);
+	gSocket->on(OBSERVE_SOCKET_CMD, (sio::socket::event_listener) &socketObserveEventCB);
+	gSocket->on(DEOBSERVE_SOCKET_CMD, (sio::socket::event_listener) &socketDeobserveEventCB);
 
 	printf("Entering infinite loop\n");
 	while(true){}
