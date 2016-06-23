@@ -402,10 +402,6 @@ void socketDiscoveryEventCB(sio::event &)
 	}
 }
 
-sio::socket::ptr initSocket()
-{
-}
-
 int main()
 {
 	OC::PlatformConfig m_platform {
