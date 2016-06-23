@@ -343,7 +343,7 @@ void onIotDiscoveryCB(std::shared_ptr<OC::OCResource> resource)
 			std::cout<<"\tResource Address: "<<resource->host()<<std::endl;
 		
 			std::ostringstream id;
-			id<<resource->uri()<<resource->host();
+			id<<resource->host()<<resource->uri();
 			std::cout<<"\tResource ID: "<<id.str()<<std::endl;
 			
 			gDiscoveredResourcesMap[id.str()] = resource;
