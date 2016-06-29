@@ -30,7 +30,7 @@ $CC server.c -std=c99 -g2 -DTB_LOG -Wall -pthread \
 -lm -loc -loc_logger -loctbstack -locsrm -lconnectivity_abstraction -lcoap -lpthread -llogger -lrt -o server \
 && \
 $CC client.c -std=c99 -g2 -DTB_LOG -Wall -pthread \
--DNDEBUG -DLE_ADAPTER -DROUTING_EP \
+-DNDEBUG -DWITH_POSIX -DLE_ADAPTER -DROUTING_EP -DWITH_BWT \
 -I $IOTIVITY_HOME/resource/c_common/oic_string/include \
 -I $IOTIVITY_HOME/resource/csdk/stack/include/ \
 -I $IOTIVITY_HOME/resource/c_common/ \
